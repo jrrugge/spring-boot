@@ -1,0 +1,29 @@
+### Get all users (copy an id)
+GET http://localhost:8080/api/v1/users
+
+### Get available cars (copy an id)
+GET http://localhost:8080/api/v1/cars/available
+
+
+### Available electric cars only
+GET http://localhost:8080/api/v1/cars/available/electric
+
+### Book a car
+POST http://localhost:8080/api/v1/bookings
+Content-Type: application/json
+
+{
+  "userId": "5b4b2cd1-15f0-45b7-8b8d-833069d8f761",
+  "carId": "50ab755e-d2e9-4e88-af89-87dbdc9fd4ee",
+  "startDate": "2026-10-20",
+  "endDate": "2026-10-23"
+}
+
+### View all bookings (pick a booking id for DELETE below)
+GET http://localhost:8080/api/v1/bookings
+
+### View bookings for one user (paste user id from GET /api/v1/users)
+GET http://localhost:8080/api/v1/bookings/user/<uuid>
+
+### Cancel/delete a booking (paste booking id from GET /api/v1/bookings or POST response)
+DELETE http://localhost:8080/api/v1/bookings/b62ca20b-ae22-4b42-8ca2-58b3611c1419
