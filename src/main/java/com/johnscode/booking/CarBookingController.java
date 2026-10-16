@@ -4,7 +4,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -24,17 +26,30 @@ public class CarBookingController {
     }
 
     @GetMapping
-    public List<CarBookingResponse> getAllBookings() {
-        return carBookingService.getAllBookings();
+    public ResponseEntity<Map<String, Object>> getAllBookings() {
+        List<CarBookingResponse> bookings = carBookingService.getAllBookings();
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("bookings", bookings);
+        if (bookings.isEmpty()) {
+            body.put("message", "No bookings exist yet.");
+        }
+        return ResponseEntity.ok(body);
     }
 
     @GetMapping("/user/{userId}")
-    public List<CarBookingResponse> getBookingsByUserId(@PathVariable UUID userId) {
-        return carBookingService.getBookingsByUserId(userId);
+    public ResponseEntity<Map<String, Object>> getBookingsByUserId(@PathVariable UUID userId) {
+        List<CarBookingResponse> bookings = carBookingService.getBookingsByUserId(userId);
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("bookings", bookings);
+        if (bookings.isEmpty()) {
+            body.put("message", "No bookings exist for this user yet.");
+        }
+        return ResponseEntity.ok(body);
     }
 
     @DeleteMapping("/{bookingId}")
-    public void deleteBooking(@PathVariable UUID bookingId) {
+    public ResponseEntity<Map<String, String>> deleteBooking(@PathVariable UUID bookingId) {
         carBookingService.deleteBooking(bookingId);
+        return ResponseEntity.ok(Map.of("message", "Booking deletion confirmed"));
     }
 }

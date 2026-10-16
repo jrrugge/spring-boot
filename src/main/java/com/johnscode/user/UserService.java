@@ -1,5 +1,7 @@
 package com.johnscode.user;
 
+import com.johnscode.exception.BadRequestException;
+import com.johnscode.exception.UserNotFoundException;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -24,10 +26,10 @@ public class UserService {
 
     public AppUser getUserById(UUID userId) {
         if (userId == null) {
-            throw new IllegalArgumentException("User ID cannot be null");
+            throw new BadRequestException("User ID cannot be null");
         }
         return appUserRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("No user was found with ID: " + userId));
+                .orElseThrow(() -> new UserNotFoundException("No user was found with ID: " + userId));
     }
 
     private UserResponse toResponse(AppUser user) {

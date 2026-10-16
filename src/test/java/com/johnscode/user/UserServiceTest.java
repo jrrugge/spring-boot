@@ -1,5 +1,6 @@
 package com.johnscode.user;
 
+import com.johnscode.exception.BadRequestException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -56,6 +57,6 @@ class UserServiceTest {
 
     @Test
     void itShouldThrowWhenUserIdIsNull() {
-        assertThrows(IllegalArgumentException.class, () -> underTest.getUserById(null));
+        assertThrows(BadRequestException.class, () -> underTest.getUserById(null));
     }
 }

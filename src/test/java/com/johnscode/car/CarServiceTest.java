@@ -1,6 +1,7 @@
 package com.johnscode.car;
 
 import com.johnscode.booking.CarBookingRepository;
+import com.johnscode.exception.BadRequestException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -14,6 +15,8 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -61,29 +64,33 @@ class CarServiceTest {
 
     @Test
     void itShouldThrowWhenCarIdIsNull() {
-        assertThrows(IllegalArgumentException.class, () -> underTest.getCarById(null));
+        assertThrows(BadRequestException.class, () -> underTest.getCarById(null));
     }
 
     @Test
     void itShouldGetAvailableCars() {
         Car audi = new Car(UUID.randomUUID(), "AU-002", new BigDecimal("24.99"), Brand.AUDI, false);
+
         when(carRepository.findAll()).thenReturn(List.of(tesla, audi));
-        when(carBookingRepository.findAll()).thenReturn(List.of());
+        when(carBookingRepository.existsOverlappingActiveBooking(eq(carId), any(), any())).thenReturn(true);
+        when(carBookingRepository.existsOverlappingActiveBooking(eq(audi.getId()), any(), any())).thenReturn(false);
 
         List<CarResponse> result = underTest.getAvailableCars();
 
-        assertEquals(2, result.size());
+        assertEquals(1, result.size());
+        assertEquals("AU-002", result.get(0).regNumber());
     }
 
     @Test
     void itShouldGetAvailableElectricCars() {
         Car audi = new Car(UUID.randomUUID(), "AU-002", new BigDecimal("24.99"), Brand.AUDI, false);
+
         when(carRepository.findAll()).thenReturn(List.of(tesla, audi));
-        when(carBookingRepository.findAll()).thenReturn(List.of());
+        when(carBookingRepository.existsOverlappingActiveBooking(eq(carId), any(), any())).thenReturn(true);
+        when(carBookingRepository.existsOverlappingActiveBooking(eq(audi.getId()), any(), any())).thenReturn(false);
 
         List<CarResponse> result = underTest.getAvailableElectricCars();
 
-        assertEquals(1, result.size());
-        assertEquals(Brand.TESLA, result.get(0).brand());
+        assertEquals(0, result.size());
     }
 }

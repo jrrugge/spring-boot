@@ -4,6 +4,8 @@ import com.johnscode.car.Brand;
 import com.johnscode.car.Car;
 import com.johnscode.car.CarService;
 import com.johnscode.user.AppUser;
+import com.johnscode.exception.BookingAlreadyCancelledException;
+import com.johnscode.exception.CarAlreadyBookedException;
 import com.johnscode.user.UserService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -13,11 +15,13 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
@@ -60,7 +64,7 @@ class CarBookingServiceTest {
 
         when(userService.getUserById(userId)).thenReturn(james);
         when(carService.getCarById(carId)).thenReturn(tesla);
-        when(carBookingRepository.findAll()).thenReturn(List.of());
+        when(carBookingRepository.existsOverlappingActiveBooking(carId, startDate, endDate)).thenReturn(false);
         when(carBookingRepository.save(any(CarBooking.class))).thenAnswer(invocation -> {
             CarBooking booking = invocation.getArgument(0);
             booking.setId(UUID.randomUUID());
@@ -73,6 +77,7 @@ class CarBookingServiceTest {
         assertEquals("TE-001", result.carRegNumber());
         assertEquals(BookingStatus.ACTIVE, result.status());
         assertEquals(new BigDecimal("150.00"), result.price());
+        assertNotNull(result.bookedAt());
         verify(carBookingRepository).save(any(CarBooking.class));
     }
 
@@ -82,24 +87,27 @@ class CarBookingServiceTest {
         LocalDate endDate = LocalDate.now().plusDays(5);
         CarBookingRequest request = new CarBookingRequest(userId, carId, startDate, endDate);
 
-        CarBooking existingBooking = new CarBooking(
-                james, tesla,
-                LocalDate.now().plusDays(1), LocalDate.now().plusDays(4),
-                new BigDecimal("150.00"), BookingStatus.ACTIVE
-        );
-        existingBooking.setId(UUID.randomUUID());
-
         when(userService.getUserById(userId)).thenReturn(james);
         when(carService.getCarById(carId)).thenReturn(tesla);
-        when(carBookingRepository.findAll()).thenReturn(List.of(existingBooking));
+        when(carBookingRepository.existsOverlappingActiveBooking(carId, startDate, endDate)).thenReturn(true);
 
-        IllegalStateException exception = assertThrows(
-                IllegalStateException.class,
+        CarAlreadyBookedException exception = assertThrows(
+                CarAlreadyBookedException.class,
                 () -> underTest.bookCar(request)
         );
 
-        assertEquals("The car is already booked and is not available", exception.getMessage());
+        assertEquals("This car is already booked", exception.getMessage());
         verify(carBookingRepository, never()).save(any(CarBooking.class));
+    }
+
+    @Test
+    void itShouldListOnlyActiveBookings() {
+        when(carBookingRepository.findByStatus(BookingStatus.ACTIVE)).thenReturn(List.of());
+
+        underTest.getAllBookings();
+
+        verify(carBookingRepository).findByStatus(BookingStatus.ACTIVE);
+        verify(carBookingRepository, never()).findAll();
     }
 
     @Test
@@ -107,16 +115,38 @@ class CarBookingServiceTest {
         CarBooking booking = new CarBooking(
                 james, tesla,
                 LocalDate.now().plusDays(1), LocalDate.now().plusDays(3),
-                new BigDecimal("100.00"), BookingStatus.ACTIVE
+                new BigDecimal("100.00"), BookingStatus.ACTIVE, LocalDateTime.now()
         );
         booking.setId(UUID.randomUUID());
-        when(carBookingRepository.findAll()).thenReturn(List.of(booking));
+        when(carBookingRepository.findByStatus(BookingStatus.ACTIVE)).thenReturn(List.of(booking));
 
         List<CarBookingResponse> result = underTest.getAllBookings();
 
         assertEquals(1, result.size());
         assertEquals(booking.getId(), result.get(0).id());
-        verify(carBookingRepository).findAll();
+        verify(carBookingRepository).findByStatus(BookingStatus.ACTIVE);
+    }
+
+    @Test
+    void itShouldGetBookingsByUserId() {
+        CarBooking booking = new CarBooking(
+                james, tesla,
+                LocalDate.now().plusDays(1), LocalDate.now().plusDays(3),
+                new BigDecimal("100.00"), BookingStatus.ACTIVE, LocalDateTime.now()
+        );
+        booking.setId(UUID.randomUUID());
+
+        when(userService.getUserById(userId)).thenReturn(james);
+        when(carBookingRepository.findByUser_IdAndStatus(userId, BookingStatus.ACTIVE))
+                .thenReturn(List.of(booking));
+
+        List<CarBookingResponse> result = underTest.getBookingsByUserId(userId);
+
+        assertEquals(1, result.size());
+        assertEquals(booking.getId(), result.get(0).id());
+        assertEquals("James", result.get(0).userName());
+        verify(userService).getUserById(userId);
+        verify(carBookingRepository).findByUser_IdAndStatus(userId, BookingStatus.ACTIVE);
     }
 
     @Test
@@ -125,7 +155,7 @@ class CarBookingServiceTest {
         CarBooking booking = new CarBooking(
                 james, tesla,
                 LocalDate.now().plusDays(1), LocalDate.now().plusDays(3),
-                new BigDecimal("100.00"), BookingStatus.ACTIVE
+                new BigDecimal("100.00"), BookingStatus.ACTIVE, LocalDateTime.now()
         );
         booking.setId(bookingId);
         when(carBookingRepository.findById(bookingId)).thenReturn(Optional.of(booking));
@@ -134,5 +164,25 @@ class CarBookingServiceTest {
 
         assertEquals(BookingStatus.CANCELLED, booking.getStatus());
         verify(carBookingRepository).save(booking);
+    }
+
+    @Test
+    void itShouldThrowWhenDeletingAlreadyCancelledBooking() {
+        UUID bookingId = UUID.randomUUID();
+        CarBooking booking = new CarBooking(
+                james, tesla,
+                LocalDate.now().plusDays(1), LocalDate.now().plusDays(3),
+                new BigDecimal("100.00"), BookingStatus.CANCELLED, LocalDateTime.now()
+        );
+        booking.setId(bookingId);
+        when(carBookingRepository.findById(bookingId)).thenReturn(Optional.of(booking));
+
+        BookingAlreadyCancelledException exception = assertThrows(
+                BookingAlreadyCancelledException.class,
+                () -> underTest.deleteBooking(bookingId)
+        );
+        assertEquals("This booking is already cancelled", exception.getMessage());
+
+        verify(carBookingRepository, never()).save(any(CarBooking.class));
     }
 }

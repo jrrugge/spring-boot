@@ -2,10 +2,15 @@ package com.johnscode.booking;
 import com.johnscode.car.Car;
 import com.johnscode.car.CarService;
 import com.johnscode.user.AppUser;
+import com.johnscode.exception.BadRequestException;
+import com.johnscode.exception.BookingAlreadyCancelledException;
+import com.johnscode.exception.BookingNotFoundException;
+import com.johnscode.exception.CarAlreadyBookedException;
 import com.johnscode.user.UserService;
 import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
@@ -15,11 +20,12 @@ public class CarBookingService {
     private final CarBookingRepository carBookingRepository;
     private final CarService carService;
     private final UserService userService;
+
     public CarBookingService(
             CarBookingRepository carBookingRepository,
             CarService carService,
-            UserService userService)
-    {
+            UserService userService
+    ) {
         this.carBookingRepository = carBookingRepository;
         this.carService = carService;
         this.userService = userService;
@@ -32,72 +38,70 @@ public class CarBookingService {
         LocalDate endDate = request.endDate();
 
         if (userId == null) {
-            throw new IllegalArgumentException("User ID cannot be null");
+            throw new BadRequestException("User ID cannot be null");
         }
         if (carId == null) {
-            throw new IllegalArgumentException("Car ID cannot be null");
+            throw new BadRequestException("Car ID cannot be null");
         }
         if (startDate == null || endDate == null) {
-            throw new IllegalArgumentException("Start date and end date are required");
+            throw new BadRequestException("Start date and end date are required");
         }
 
         AppUser user = userService.getUserById(userId);
         Car car = carService.getCarById(carId);
 
         if (startDate.isBefore(LocalDate.now())) {
-            throw new IllegalArgumentException("The start date cannot be in the past");
+            throw new BadRequestException("The start date cannot be in the past");
         }
         if (!endDate.isAfter(startDate)) {
-            throw new IllegalArgumentException("The end date must be after the start date");
+            throw new BadRequestException("The end date must be after the start date");
         }
-        if (isCarBooked(carId, startDate, endDate)) {
-            throw new IllegalStateException("The car is already booked and is not available");
+        if (carBookingRepository.existsOverlappingActiveBooking(carId, startDate, endDate)) {
+            throw new CarAlreadyBookedException("This car is already booked");
         }
 
         long numberOfDays = ChronoUnit.DAYS.between(startDate, endDate);
         BigDecimal totalPrice = car.getRentalPricePerDay().multiply(BigDecimal.valueOf(numberOfDays));
 
-        CarBooking booking = new CarBooking(user, car, startDate, endDate, totalPrice, BookingStatus.ACTIVE);
+        // Server timestamp — not sent by the client (same as CLI bookCar)
+        CarBooking booking = new CarBooking(
+                user, car, startDate, endDate, totalPrice, BookingStatus.ACTIVE, LocalDateTime.now()
+        );
         CarBooking saved = carBookingRepository.save(booking);
 
         return toResponse(saved);
     }
 
-    private boolean isCarBooked(UUID carId, LocalDate startDate, LocalDate endDate) {
-        return carBookingRepository.findAll().stream()
-                .anyMatch(booking ->
-                        booking.getCar().getId().equals(carId)
-                                && booking.getStatus() == BookingStatus.ACTIVE
-                                && booking.getStartDate().isBefore(endDate)
-                                && startDate.isBefore(booking.getEndDate())
-                );
-    }
-
+    // Lists show ACTIVE only; CANCELLED rows stay in DB for history
     public List<CarBookingResponse> getAllBookings() {
-        return carBookingRepository.findAll()
+        return carBookingRepository.findByStatus(BookingStatus.ACTIVE)
                 .stream()
                 .map(this::toResponse)
                 .toList();
     }
-//List bookings by user id
+
     public List<CarBookingResponse> getBookingsByUserId(UUID userId) {
         userService.getUserById(userId);
-        return carBookingRepository.findByUser_Id(userId)
+        return carBookingRepository.findByUser_IdAndStatus(userId, BookingStatus.ACTIVE)
                 .stream()
                 .map(this::toResponse)
                 .toList();
     }
 
+    // Soft delete (same as CLI Phase 5): row kept for history; GET lists use ACTIVE only
     public void deleteBooking(UUID bookingId) {
         if (bookingId == null) {
-            throw new IllegalArgumentException("Booking ID cannot be null");
+            throw new BadRequestException("Booking ID cannot be null");
         }
         CarBooking booking = carBookingRepository.findById(bookingId)
-                .orElseThrow(() -> new IllegalArgumentException("No booking was found with ID: " + bookingId));
+                .orElseThrow(() -> new BookingNotFoundException("No booking was found with ID: " + bookingId));
+        if (booking.getStatus() == BookingStatus.CANCELLED) {
+            throw new BookingAlreadyCancelledException("This booking is already cancelled");
+        }
         booking.setStatus(BookingStatus.CANCELLED);
         carBookingRepository.save(booking);
     }
-//Map Entity/DB to DTO
+    // Entity → API (includes bookedAt from the row we saved in bookCar)
     private CarBookingResponse toResponse(CarBooking booking) {
         return new CarBookingResponse(
                 booking.getId(),
@@ -107,7 +111,8 @@ public class CarBookingService {
                 booking.getStartDate(),
                 booking.getEndDate(),
                 booking.getPrice(),
-                booking.getStatus()
+                booking.getStatus(),
+                booking.getBookedAt()
         );
     }
 }

@@ -6,6 +6,7 @@ import jakarta.persistence.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -38,16 +39,22 @@ public class CarBooking {
     @Column(nullable = false)
     private BookingStatus status;
 
+    // When the booking is created (stored in DB as booked_at)
+    @Column(nullable = false)
+    private LocalDateTime bookedAt;
+
     protected CarBooking() {
     }
 
-    public CarBooking(AppUser user, Car car, LocalDate startDate, LocalDate endDate, BigDecimal price, BookingStatus status) {
+    public CarBooking(AppUser user, Car car, LocalDate startDate, LocalDate endDate,
+                      BigDecimal price, BookingStatus status, LocalDateTime bookedAt) {
         this.user = user;
         this.car = car;
         this.startDate = startDate;
         this.endDate = endDate;
         this.price = price;
         this.status = status;
+        this.bookedAt = bookedAt;
     }
 
     public UUID getId() {
@@ -104,6 +111,14 @@ public class CarBooking {
 
     public void setStatus(BookingStatus status) {
         this.status = status;
+    }
+
+    public LocalDateTime getBookedAt() {
+        return bookedAt;
+    }
+
+    public void setBookedAt(LocalDateTime bookedAt) {
+        this.bookedAt = bookedAt;
     }
 
     @Override
