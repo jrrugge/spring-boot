@@ -1,0 +1,23 @@
+# Copy user id + car id from GET below after each restart (H2 ids change)
+
+GET http://localhost:8080/api/v1/users
+
+GET http://localhost:8080/api/v1/cars/available
+
+GET http://localhost:8080/api/v1/cars/available/electric
+
+POST http://localhost:8080/api/v1/bookings
+Content-Type: application/json
+
+{
+  "userId": "",
+  "carId": "",
+  "startDate": "2026-11-01",
+  "endDate": "2026-11-04"
+}
+
+GET http://localhost:8080/api/v1/bookings
+
+GET http://localhost:8080/api/v1/bookings/user/
+
+DELETE http://localhost:8080/api/v1/bookings/
